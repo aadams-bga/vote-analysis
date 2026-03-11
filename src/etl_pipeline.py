@@ -49,6 +49,9 @@ def run_etl():
     # Read CSV with proper headers
     df = pd.read_csv("temp_votes.csv")
     
+    # Replace NaN with None for JSON compliance
+    df = df.where(pd.notnull(df), None)
+    
     # Clean column names
     df.columns = [c.strip() for c in df.columns]
     print(f"Columns found: {df.columns.tolist()}")
