@@ -11,7 +11,7 @@
     <div class="container mx-auto px-4 py-8">
         <header class="mb-10 text-center">
             <h1 class="text-4xl font-bold text-blue-800">ILGA Legislative Tracker</h1>
-            <p class="text-gray-600">Real-time legislative activity monitoring for the Illinois General Assembly</p>
+            <p id="status-text" class="text-gray-600">Checking database connection...</p>
         </header>
 
         <!-- Main Dashboard: Absence Ranking -->
@@ -29,7 +29,7 @@
                         </tr>
                     </thead>
                     <tbody id="absence-table-body">
-                        <!-- Loaded dynamically -->
+                        <tr><td colspan="5" class="p-4 text-center text-gray-400">Loading data...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -86,22 +86,31 @@
     </div>
 
     <script>
-        // Supabase configuration
+        // REPLACE WITH YOUR ACTUAL SUPABASE URL AND ANON KEY
         const SUPABASE_URL = 'https://ifqximtyzqidsrfqvmml.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcXhpbXR5enFpZHNyZnF2bW1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDc1NTgsImV4cCI6MjA4ODgyMzU1OH0.p98P_Bd-fnVyuqCi2MV8ehyZSTc5iu3kJNcq8072pII';
         
-        // Fix: Use a different variable name for the client instance
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         async function fetchAbsenceRankings() {
+            console.log("Fetching member rankings...");
             const { data, error } = await _supabase
                 .from('members')
                 .select('*')
                 .order('metric2_absences', { ascending: false })
                 .limit(10);
 
-            if (data) {
-                const tbody = document.getElementById('absence-table-body');
+            if (error) {
+                console.error("Supabase Error:", error);
+                document.getElementById('status-text').innerText = "❌ Error: " + error.message;
+                return;
+            }
+
+            console.log("Data received:", data);
+            const tbody = document.getElementById('absence-table-body');
+            
+            if (data && data.length > 0) {
+                document.getElementById('status-text').innerText = `✅ Loaded ${data.length} members.`;
                 tbody.innerHTML = data.map(m => `
                     <tr class="border-b hover:bg-gray-50">
                         <td class="p-4 font-medium">${m.name}</td>
@@ -111,8 +120,9 @@
                         <td class="p-4 font-semibold text-red-600">${m.metric2_absences}</td>
                     </tr>
                 `).join('');
-            } else if (error) {
-                console.error("Supabase Error:", error);
+            } else {
+                document.getElementById('status-text').innerText = "⚠️ Connected, but the 'members' table is empty.";
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No data found. Ensure the ETL pipeline has finished running and RLS is disabled.</td></tr>';
             }
         }
 
@@ -122,28 +132,31 @@
                 .from('members')
                 .select('*')
                 .ilike('name', `%${name}%`)
-                .single();
+                .limit(1);
 
-            if (data) {
-                document.getElementById('profile-name').innerText = data.name;
-                document.getElementById('profile-party').innerText = data.party || 'N/A';
-                document.getElementById('profile-city').innerText = data.city || 'N/A';
-                document.getElementById('profile-district').innerText = data.district || 'N/A';
-                document.getElementById('profile-m1').innerText = data.metric1_absences;
+            if (data && data.length > 0) {
+                const member = data[0];
+                document.getElementById('profile-name').innerText = member.name;
+                document.getElementById('profile-party').innerText = member.party || 'N/A';
+                document.getElementById('profile-city').innerText = member.city || 'N/A';
+                document.getElementById('profile-district').innerText = member.district || 'N/A';
+                document.getElementById('profile-m1').innerText = member.metric1_absences;
                 document.getElementById('member-profile').classList.remove('hidden');
+            } else {
+                alert("Member not found.");
             }
         }
 
         async function searchBill() {
             const billNum = document.getElementById('bill-search').value;
-            const { data: bill, error: bErr } = await _supabase
+            const { data: bills, error: bErr } = await _supabase
                 .from('bills')
                 .select('*')
                 .eq('bill_number', billNum)
-                .limit(1)
-                .single();
+                .limit(1);
 
-            if (bill) {
+            if (bills && bills.length > 0) {
+                const bill = bills[0];
                 document.getElementById('bill-number-display').innerText = bill.bill_number;
                 document.getElementById('bill-type').innerText = bill.vote_type;
                 document.getElementById('bill-margin').innerText = bill.margin_required;
@@ -162,14 +175,13 @@
                 `).join('');
                 
                 document.getElementById('bill-info').classList.remove('hidden');
+            } else {
+                alert("Bill not found.");
             }
         }
 
         async function runComparison() {
-            const resultDiv = document.getElementById('comparison-result');
-            resultDiv.innerHTML = `<p class="italic text-gray-500">Comparison feature requires full data aggregation for accurate results.</p>`;
-            resultDiv.classList.remove('hidden');
-            resultDiv.classList.add('bg-blue-50');
+            alert("This feature is currently a placeholder.");
         }
 
         // Initialize
