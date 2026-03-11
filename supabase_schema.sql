@@ -16,11 +16,12 @@ CREATE TABLE IF NOT EXISTS members (
 -- Table: bills
 CREATE TABLE IF NOT EXISTS bills (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    bill_number TEXT NOT NULL UNIQUE,
+    bill_number TEXT NOT NULL,
     vote_date DATE,
     vote_type TEXT,
     margin_required TEXT,
-    passed BOOLEAN
+    passed BOOLEAN,
+    UNIQUE(bill_number, vote_type, vote_date)
 );
 
 -- Table: votes
@@ -48,12 +49,12 @@ BEGIN
     
     INSERT INTO bills (bill_number, vote_date, vote_type, margin_required, passed)
     VALUES ('HB1234', '2024-03-10', 'Third Reading', 'Simple Majority', TRUE)
-    ON CONFLICT (bill_number) DO UPDATE SET bill_number = EXCLUDED.bill_number
+    ON CONFLICT (bill_number, vote_type, vote_date) DO UPDATE SET bill_number = EXCLUDED.bill_number
     RETURNING id INTO bill1_id;
 
     INSERT INTO bills (bill_number, vote_date, vote_type, margin_required, passed)
     VALUES ('SB0001', '2024-06-15', 'Third Reading', '3/5s Majority', FALSE)
-    ON CONFLICT (bill_number) DO UPDATE SET bill_number = EXCLUDED.bill_number
+    ON CONFLICT (bill_number, vote_type, vote_date) DO UPDATE SET bill_number = EXCLUDED.bill_number
     RETURNING id INTO bill2_id;
 
     INSERT INTO votes (bill_id, member_id, vote_cast)
