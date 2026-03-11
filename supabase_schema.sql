@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS members (
     active_status BOOLEAN DEFAULT TRUE,
     metric1_absences INTEGER DEFAULT 0,
     metric2_absences INTEGER DEFAULT 0,
-    UNIQUE(name, district)
+    UNIQUE(name)
 );
 
 -- Table: bills
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS votes (
 -- Insert dummy data for Carol Ammons
 INSERT INTO members (name, party, city, district, active_status)
 VALUES ('Carol Ammons', 'Democrat', 'Urbana', '103rd District', TRUE)
-ON CONFLICT (name, district) DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
 
 -- Insert fake bills and votes for testing
 DO $$

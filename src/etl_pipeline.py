@@ -19,15 +19,15 @@ CSV_URL = "https://ilga.gov/documents/reports/static/104MemberVotes.csv"
 def get_margin_required(vote_type, vote_date_str):
     """
     Logic: 1/1 to 5/31 inclusive = "Simple Majority". 6/1 to 12/31 = "3/5s Majority". 
-    Exceptions: If vote_type is "Appointment Message" or "Procedural", it ALWAYS requires a "Simple Majority".
+    Exceptions: If vote_type contains "Appointment Message" or "Procedural", it ALWAYS requires a "Simple Majority".
     """
-    if vote_type in ["Appointment Message", "Procedural"]:
+    if any(keyword in str(vote_type) for keyword in ["Appointment Message", "Procedural"]):
         return "Simple Majority"
     
     try:
-        vote_date = datetime.strptime(vote_date_str, "%m/%d/%Y")
+        # Expected format from CSV: YYYY-MM-DD
+        vote_date = datetime.strptime(str(vote_date_str), "%Y-%m-%d")
         month = vote_date.month
-        day = vote_date.day
         
         # 1/1 to 5/31
         if month < 6:
@@ -46,25 +46,31 @@ def run_etl():
     with open("temp_votes.csv", "wb") as f:
         f.write(response.content)
     
+    # Read CSV with proper headers
     df = pd.read_csv("temp_votes.csv")
     
-    # Clean column names (strip whitespace)
+    # Clean column names
     df.columns = [c.strip() for c in df.columns]
+    print(f"Columns found: {df.columns.tolist()}")
 
-    # Expected columns based on prompt: bill_number, member_name, vote_cast, vote_date, vote_type, party, city, district
-    # Note: Actual CSV column names might differ, this script assumes the mapping.
+    # Mapping based on actual CSV headers: 
+    # GA, Member, Chamber, Session, Legislation, Vote Type, Vote Date, Vote
     
+    # Standardize data for processing
+    df['member_name'] = df['Member']
+    df['bill_number'] = df['Legislation']
+    df['vote_cast'] = df['Vote']
+    df['v_date'] = df['Vote Date']
+    df['v_type'] = df['Vote Type']
+
     members_data = []
     bills_data = []
     votes_data = []
 
-    # Process Members and Bills first to handle relationships
-    # This is a simplified version. In a real scenario, we'd handle deduplication more robustly.
-    
-    unique_members = df[['member_name', 'party', 'city', 'district']].drop_duplicates()
-    for _, row in unique_members.iterrows():
-        # Calculate Metrics per member
-        member_votes = df[df['member_name'] == row['member_name']]
+    # Process Members
+    unique_members = df['member_name'].unique()
+    for member in unique_members:
+        member_votes = df[df['member_name'] == member]
         
         # Metric 1: count of 'excused' + 'absent'
         m1 = len(member_votes[member_votes['vote_cast'].str.lower().isin(['excused', 'absent'])])
@@ -72,42 +78,44 @@ def run_etl():
         # Metric 2: count of 'excused' + 'absent' + 'no vote' + 'not voting'
         m2 = len(member_votes[member_votes['vote_cast'].str.lower().isin(['excused', 'absent', 'no vote', 'not voting'])])
         
+        # Since party/city/district aren't in this CSV, we use placeholders or keep existing if updating
         members_data.append({
-            "name": row['member_name'],
-            "party": row['party'],
-            "city": row['city'],
-            "district": row['district'],
+            "name": member,
             "metric1_absences": m1,
             "metric2_absences": m2,
             "active_status": True
+            # Note: party, city, district will remain NULL unless previously set
         })
 
-    unique_bills = df[['bill_number', 'vote_date', 'vote_type']].drop_duplicates()
+    # Process Bills
+    unique_bills = df[['bill_number', 'v_date', 'v_type']].drop_duplicates()
     for _, row in unique_bills.iterrows():
-        margin = get_margin_required(row['vote_type'], str(row['vote_date']))
+        margin = get_margin_required(row['v_type'], row['v_date'])
         bills_data.append({
             "bill_number": row['bill_number'],
-            "vote_date": row['vote_date'],
-            "vote_type": row['vote_type'],
+            "vote_date": row['v_date'],
+            "vote_type": row['v_type'],
             "margin_required": margin,
-            "passed": None # This would normally be calculated from vote totals
+            "passed": None # Calculated from totals in a real scenario
         })
 
-    print("Upserting members...")
-    supabase.table("members").upsert(members_data, on_conflict="name,district").execute()
+    print(f"Upserting {len(members_data)} members...")
+    # Using 'name' as unique identifier since 'district' isn't available in this CSV
+    # We might need to adjust the DB unique constraint if names aren't unique enough
+    supabase.table("members").upsert(members_data, on_conflict="name").execute()
     
-    print("Upserting bills...")
+    print(f"Upserting {len(bills_data)} bills...")
     supabase.table("bills").upsert(bills_data, on_conflict="bill_number").execute()
 
     # Get IDs for foreign keys
-    res_members = supabase.table("members").select("id, name, district").execute()
-    member_map = {(m['name'], m['district']): m['id'] for m in res_members.data}
+    res_members = supabase.table("members").select("id, name").execute()
+    member_map = {m['name']: m['id'] for m in res_members.data}
 
     res_bills = supabase.table("bills").select("id, bill_number").execute()
     bill_map = {b['bill_number']: b['id'] for b in res_bills.data}
 
     for _, row in df.iterrows():
-        m_id = member_map.get((row['member_name'], row['district']))
+        m_id = member_map.get(row['member_name'])
         b_id = bill_map.get(row['bill_number'])
         
         if m_id and b_id:
@@ -118,7 +126,6 @@ def run_etl():
             })
 
     print(f"Upserting {len(votes_data)} votes...")
-    # Batch upsert to avoid request size limits
     batch_size = 1000
     for i in range(0, len(votes_data), batch_size):
         supabase.table("votes").upsert(votes_data[i:i+batch_size], on_conflict="bill_id,member_id").execute()
