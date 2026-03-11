@@ -86,7 +86,7 @@
     </div>
 
     <script>
-        // REPLACE WITH YOUR ACTUAL SUPABASE URL AND ANON KEY
+        // Supabase configuration
         const SUPABASE_URL = 'https://ifqximtyzqidsrfqvmml.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcXhpbXR5enFpZHNyZnF2bW1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDc1NTgsImV4cCI6MjA4ODgyMzU1OH0.p98P_Bd-fnVyuqCi2MV8ehyZSTc5iu3kJNcq8072pII';
         
@@ -101,14 +101,12 @@
                 .limit(10);
 
             if (error) {
-                console.error("Supabase Error:", error);
+                console.error("Supabase Error (fetchAbsenceRankings):", error);
                 document.getElementById('status-text').innerText = "❌ Error: " + error.message;
                 return;
             }
 
-            console.log("Data received:", data);
             const tbody = document.getElementById('absence-table-body');
-            
             if (data && data.length > 0) {
                 document.getElementById('status-text').innerText = `✅ Loaded ${data.length} members.`;
                 tbody.innerHTML = data.map(m => `
@@ -122,17 +120,24 @@
                 `).join('');
             } else {
                 document.getElementById('status-text').innerText = "⚠️ Connected, but the 'members' table is empty.";
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No data found. Ensure the ETL pipeline has finished running and RLS is disabled.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No data found.</td></tr>';
             }
         }
 
         async function searchMember() {
             const name = document.getElementById('member-search').value;
+            console.log("Searching member:", name);
             const { data, error } = await _supabase
                 .from('members')
                 .select('*')
                 .ilike('name', `%${name}%`)
                 .limit(1);
+
+            if (error) {
+                console.error("Supabase Error (searchMember):", error);
+                alert("Search error: " + error.message);
+                return;
+            }
 
             if (data && data.length > 0) {
                 const member = data[0];
@@ -149,11 +154,18 @@
 
         async function searchBill() {
             const billNum = document.getElementById('bill-search').value;
+            console.log("Searching bill:", billNum);
             const { data: bills, error: bErr } = await _supabase
                 .from('bills')
                 .select('*')
                 .eq('bill_number', billNum)
                 .limit(1);
+
+            if (bErr) {
+                console.error("Supabase Error (searchBill - bills):", bErr);
+                alert("Bill lookup error: " + bErr.message);
+                return;
+            }
 
             if (bills && bills.length > 0) {
                 const bill = bills[0];
@@ -161,18 +173,29 @@
                 document.getElementById('bill-type').innerText = bill.vote_type;
                 document.getElementById('bill-margin').innerText = bill.margin_required;
                 
+                // Use proper inner join syntax for Supabase JS
                 const { data: votes, error: vErr } = await _supabase
                     .from('votes')
-                    .select('vote_cast, members(name)')
+                    .select('vote_cast, members!inner(name)')
                     .eq('bill_id', bill.id);
 
+                if (vErr) {
+                    console.error("Supabase Error (searchBill - votes):", vErr);
+                    alert("Vote lookup error: " + vErr.message);
+                    return;
+                }
+
                 const votesList = document.getElementById('bill-votes');
-                votesList.innerHTML = votes.map(v => `
-                    <div class="flex justify-between border-b py-1">
-                        <span>${v.members.name}</span>
-                        <span class="font-bold">${v.vote_cast}</span>
-                    </div>
-                `).join('');
+                if (votes && votes.length > 0) {
+                    votesList.innerHTML = votes.map(v => `
+                        <div class="flex justify-between border-b py-1">
+                            <span>${v.members.name}</span>
+                            <span class="font-bold">${v.vote_cast}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    votesList.innerHTML = '<p class="text-gray-400">No individual member votes found for this bill.</p>';
+                }
                 
                 document.getElementById('bill-info').classList.remove('hidden');
             } else {
