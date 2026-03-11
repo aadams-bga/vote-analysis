@@ -86,14 +86,15 @@
     </div>
 
     <script>
-        // Supabase configuration - REPLACE WITH ACTUAL VALUES
+        // Supabase configuration
         const SUPABASE_URL = 'https://ifqximtyzqidsrfqvmml.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcXhpbXR5enFpZHNyZnF2bW1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDc1NTgsImV4cCI6MjA4ODgyMzU1OH0.p98P_Bd-fnVyuqCi2MV8ehyZSTc5iu3kJNcq8072pII';
         
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Fix: Use a different variable name for the client instance
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         async function fetchAbsenceRankings() {
-            const { data, error } = await supabase
+            const { data, error } = await _supabase
                 .from('members')
                 .select('*')
                 .order('metric2_absences', { ascending: false })
@@ -104,18 +105,20 @@
                 tbody.innerHTML = data.map(m => `
                     <tr class="border-b hover:bg-gray-50">
                         <td class="p-4 font-medium">${m.name}</td>
-                        <td class="p-4">${m.party}</td>
-                        <td class="p-4">${m.district}</td>
+                        <td class="p-4">${m.party || 'N/A'}</td>
+                        <td class="p-4">${m.district || 'N/A'}</td>
                         <td class="p-4">${m.metric1_absences}</td>
                         <td class="p-4 font-semibold text-red-600">${m.metric2_absences}</td>
                     </tr>
                 `).join('');
+            } else if (error) {
+                console.error("Supabase Error:", error);
             }
         }
 
         async function searchMember() {
             const name = document.getElementById('member-search').value;
-            const { data, error } = await supabase
+            const { data, error } = await _supabase
                 .from('members')
                 .select('*')
                 .ilike('name', `%${name}%`)
@@ -123,9 +126,9 @@
 
             if (data) {
                 document.getElementById('profile-name').innerText = data.name;
-                document.getElementById('profile-party').innerText = data.party;
-                document.getElementById('profile-city').innerText = data.city;
-                document.getElementById('profile-district').innerText = data.district;
+                document.getElementById('profile-party').innerText = data.party || 'N/A';
+                document.getElementById('profile-city').innerText = data.city || 'N/A';
+                document.getElementById('profile-district').innerText = data.district || 'N/A';
                 document.getElementById('profile-m1').innerText = data.metric1_absences;
                 document.getElementById('member-profile').classList.remove('hidden');
             }
@@ -133,10 +136,11 @@
 
         async function searchBill() {
             const billNum = document.getElementById('bill-search').value;
-            const { data: bill, error: bErr } = await supabase
+            const { data: bill, error: bErr } = await _supabase
                 .from('bills')
                 .select('*')
                 .eq('bill_number', billNum)
+                .limit(1)
                 .single();
 
             if (bill) {
@@ -144,7 +148,7 @@
                 document.getElementById('bill-type').innerText = bill.vote_type;
                 document.getElementById('bill-margin').innerText = bill.margin_required;
                 
-                const { data: votes, error: vErr } = await supabase
+                const { data: votes, error: vErr } = await _supabase
                     .from('votes')
                     .select('vote_cast, members(name)')
                     .eq('bill_id', bill.id);
@@ -162,15 +166,6 @@
         }
 
         async function runComparison() {
-            const memberName = document.getElementById('comp-member').value;
-            const billNum = document.getElementById('comp-bill').value;
-
-            // This is a complex query simplified:
-            // 1. Get member's vote
-            // 2. Get all votes for that bill and calculate party majority
-            // 3. Compare
-            
-            // Logic for demo/template purposes
             const resultDiv = document.getElementById('comparison-result');
             resultDiv.innerHTML = `<p class="italic text-gray-500">Comparison feature requires full data aggregation for accurate results.</p>`;
             resultDiv.classList.remove('hidden');
